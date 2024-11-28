@@ -1,0 +1,4 @@
+Flask==2.1.1
+azure-ai-vision==1.0.0
+azure-core==1.22.1
+google-generativeai==0.1.1

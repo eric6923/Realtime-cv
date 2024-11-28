@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera to Text and Gemini Response</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+
+        #video {
+            width: 320px; /* Reduced video size */
+            height: 240px; /* Reduced video size */
+            border: 1px solid #ccc;
+        }
+
+        #capture {
+            padding: 15px 30px; /* Increased button size */
+            font-size: 18px; /* Increased font size */
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        #ocr-result, #gemini-response {
+            margin-top: 20px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Camera to Text with Azure OCR</h1>
+    
+    <!-- Camera Capture Section -->
+    <video id="video" width="320" height="240" autoplay></video>
+    <div>
+        <button id="capture">Capture</button>
+    </div>
+    <canvas id="canvas" width="640" height="480" style="display:none;"></canvas>
+    <div id="ocr-result"></div>
+    <div id="gemini-response"></div>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ocrResultDiv = document.getElementById('ocr-result');
+        const geminiResponseDiv = document.getElementById('gemini-response');
+        const captureButton = document.getElementById('capture');
+
+        // Access the camera
+        navigator.mediaDevices.getUserMedia({ 
+            video: {
+                facingMode: {
+                    ideal: "environment" // Use back camera on mobile devices
+                }
+            }
+        })
+        .then(stream => {
+            video.srcObject = stream;
+        })
+        .catch(err => {
+            console.error("Error accessing the camera: ", err);
+            ocrResultDiv.innerText = "Error accessing the camera.";
+        });
+
+        // Capture image and send to Azure for OCR
+        captureButton.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(blob => {
+                const formData = new FormData();
+                formData.append('file', blob, 'image.jpg');
+
+                fetch('/upload', {
+                    method: 'POST',
+                    body: formData,
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const recognizedText = data.text || "No text recognized.";
+                    ocrResultDiv.innerText = recognizedText; // Display recognized text
+                    sendToGemini(recognizedText); // Send text to Gemini
+                })
+                .catch(err => {
+                    console.error("Error recognizing text: ", err);
+                    ocrResultDiv.innerText = "Error recognizing text.";
+                });
+            });
+        });
+
+        function sendToGemini(prompt) {
+            fetch('/gemini', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ prompt: prompt })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.response) {
+                    geminiResponseDiv.innerText = data.response; // Display Gemini response
+                } else {
+                    geminiResponseDiv.innerText = 'Error: Unable to get a response';
+                }
+            })
+            .catch(err => {
+                console.error("Error getting response from Gemini: ", err);
+                geminiResponseDiv.innerText = 'Error fetching response.';
+            });
+        }
+    </script>
+</body>
+</html>
